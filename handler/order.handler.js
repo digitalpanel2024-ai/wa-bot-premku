@@ -56,14 +56,30 @@ async function checkOrders(client) {
                 if (status.status === 'success' && status.accounts && status.accounts.length > 0) {
                     const acc = status.accounts[0]
 
+                    // Parse password and note from API response
+                    const passwordParts = acc.password.split(' - ')
+                    const password = passwordParts[0]
+                    const note = passwordParts.slice(1).join(' - ')
+
+                    if (trx.qr_message_id) {
+                        try {
+                            await client.deleteMessage(trx.user, trx.qr_message_id)
+                            console.log('Deleted QR message for', key)
+                        } catch (err) {
+                            console.log('Unable to delete QR message:', err.message)
+                        }
+                    }
+
                     await client.sendMessage(trx.user,
 `✅ *PEMBAYARAN BERHASIL*
 
 📧 Email: ${acc.username}
-🔑 Password: ${acc.password}
+🔑 Password: ${password}
 
 📦 Produk: ${status.product}
 📄 Invoice: ${key}
+
+${note ? `📝 *Catatan:* ${note}` : ''}
 
 Terima kasih telah berbelanja! 🚀`
                     )

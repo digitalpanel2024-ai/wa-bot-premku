@@ -23,8 +23,19 @@ function createQrMedia(qrImage) {
     return new MessageMedia('image/png', base64)
 }
 
+function calculatePrice(price) {
+    let marginPercent = 0.11
+
+    if (price <= 4999) marginPercent = 0.79
+    else if (price <= 8999) marginPercent = 0.56
+    else if (price <= 19999) marginPercent = 0.19
+    else if (price <= 100000) marginPercent = 0.11
+
+    return Math.ceil(price + price * marginPercent)
+}
+
 function randomCode() {
-    return Math.floor(Math.random() * (292 - 30 + 1)) + 30
+    return Math.floor(Math.random() * (399 - 100 + 1)) + 100
 }
 
 function generateUnique(total, db) {
@@ -54,23 +65,34 @@ async function handleCommand(client, msg) {
         return client.sendMessage(msg.from,
 `${greet}!
 
-Selamat datang di Premiumku Store 🚀
+Selamat datang di *Premiumin Plus* 🚀  
+Pusat akun premium legal, murah, dan full otomatis ⚡
 
-• Ketik STOK
-• Ketik MENU
-• Ketik ADMIN`
+Mau cari akun apa hari ini?
+
+📌 *Menu Utama:*
+• Ketik *STOK* → lihat katalog produk
+• Ketik *MENU* → menu lengkap
+• Ketik *ADMIN* → bantuan langsung
+
+💸 *Mau untung lebih?*
+Gabung jadi *RESELLER* dan dapat harga lebih murah!  
+Bisa jual ulang dengan profit bebas 🔥
+
+Ketik *RESELLER* untuk info lengkap.`
         )
     }
 
     // ================= MENU =================
     if (text === 'menu') {
         return client.sendMessage(msg.from,
-`📌 MENU
+`😎 *MENU PREMIUMIN PLUS*
 
-- stok
-- buy
-- admin
-- website`
+📌 *Menu Utama:*
+• ketik *stok* → cek produk tersedia
+• ketik *buy* → beli akun premium
+• ketik *admin* → hubungi admin (no toxic / no rasis)
+• ketik *website* → SSM Panel (Beta)`
         )
     }
 
@@ -82,16 +104,40 @@ Selamat datang di Premiumku Store 🚀
         return client.sendMessage(msg.from, 'https://digitalpanelsmm.com')
     }
 
+    if (text === 'reseller') {
+        return client.sendMessage(msg.from,
+`💰 *PROGRAM RESELLER PREMIUMIN PLUS*
+
+Keuntungan jadi Reseller:
+✅ Harga lebih murah 10-20%
+✅ Komisi otomatis
+✅ Support 24/7
+✅ Produk lengkap
+
+📊 *Tier Reseller:*
+🥉 Bronze: 5 transaksi/bulan → Diskon 10%
+🥈 Silver: 15 transaksi/bulan → Diskon 15%
+🥇 Gold: 30 transaksi/bulan → Diskon 20%
+
+📞 *Cara Daftar:*
+1. Minimal deposit Rp 50.000
+2. Chat admin untuk aktivasi
+3. Dapat panel reseller pribadi
+
+💬 Hubungi: 083129999931`
+        )
+    }
+
     // ================= STOK =================
     if (text === 'stok') {
         const res = await premku.getProducts(process.env.API_KEY)
 
-        let msgText = '🛒 *KATALOG PREMIUMKU*\n\n'
+        let msgText = '🛒 *KATALOG PREMIUMIN PLUS*\n\n'
 
         res.products.forEach(p => {
             if (p.stock <= 0) return
 
-            const harga = Math.ceil(p.price * 1.8)
+            const harga = calculatePrice(p.price)
             const code = p.id
 
             msgText += `📦 ${p.name}\n`
@@ -125,8 +171,8 @@ Selamat datang di Premiumku Store 🚀
             }
 
             let db = readDB()
-            const base = Math.ceil(product.price * 1.8)
-            const { total } = generateUnique(base, db)
+            const base = calculatePrice(product.price)
+            const { total, code } = generateUnique(base, db)
 
             const invoice = 'INV-' + Date.now()
 
@@ -143,6 +189,7 @@ Selamat datang di Premiumku Store 🚀
                 user: msg.from,
                 product_id: id,
                 total,
+                unique_code: code,
                 invoice_pay: pay.data.invoice,
                 status: 'WAITING'
             }
@@ -150,7 +197,7 @@ Selamat datang di Premiumku Store 🚀
             saveDB(db)
 
             const caption =
-`💳 *PEMBAYARAN PREMIUM*
+`💳 *PEMBAYARAN PREMIUMIN PLUS*
 
 📦 ${product.name}
 💰 Total  : Rp ${total.toLocaleString('id-ID')}
@@ -166,7 +213,11 @@ Selamat datang di Premiumku Store 🚀
 
             const media = createQrMedia(pay.data.qr_image)
             if (media) {
-                return client.sendMessage(msg.from, media, { caption })
+                const sent = await client.sendMessage(msg.from, media, { caption })
+                const qrMessageId = sent.id?._serialized || sent.id
+                db[invoice].qr_message_id = qrMessageId
+                saveDB(db)
+                return sent
             }
 
             return client.sendMessage(msg.from,
