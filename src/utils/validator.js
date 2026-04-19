@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { logInfo, logError } = require('./logger')
-const { API_KEY, TELEGRAM_TOKEN, PORT } = require('../config')
+const { API_KEY, PORT } = require('../config')
 const { ensureAssetDirs, cleanDuplicateVideos, invalidateCache } = require('../service/status/status.assets')
 const { ensureHistoryFile } = require('../service/status/status.memory')
 const { ensureLogsDir } = require('../service/status/status.logger')
@@ -37,8 +37,7 @@ function ensureLogFile(filePath) {
 
 function validateEnvironment() {
   const required = [
-    { key: 'API_KEY', value: API_KEY },
-    { key: 'TELEGRAM_TOKEN', value: TELEGRAM_TOKEN }
+    { key: 'API_KEY', value: API_KEY }
   ]
 
   const missing = required.filter(item => !item.value)

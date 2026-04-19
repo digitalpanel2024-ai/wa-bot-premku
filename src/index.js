@@ -1,27 +1,32 @@
+const http = require('http')
+const { createClient } = require('./service/wa.service')
+const { cleanExpired } = require('./service/reseller.service')
 const { logInfo, logError } = require('./utils/logger')
+const { PORT } = require('./config')
 const { validateSystem } = require('./utils/validator')
+const { handleIncomingMessage } = require('./handler/message.handler')
+const { checkOrders, startOrderWatcher } = require('./handler/order.handler')
 
 let botClient = null
 let orderWatcherStarted = false
+let healthServer = null
 
-function getCreateClient() {
-  const { createClient } = require('./service/wa.service')
-  return createClient
-}
+function startHealthServer() {
+  if (healthServer) return
 
-function getHandleIncomingMessage() {
-  const { handleIncomingMessage } = require('./handler/message.handler')
-  return handleIncomingMessage
-}
+  healthServer = http.createServer((req, res) => {
+    if (req.url !== '/' && req.url !== '/health') {
+      res.writeHead(404)
+      return res.end('Not found')
+    }
 
-function getStartOrderWatcher() {
-  const { startOrderWatcher } = require('./handler/order.handler')
-  return startOrderWatcher
-}
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ status: 'ok', service: 'Premiumin Plus WhatsApp Bot', uptime: process.uptime() }))
+  })
 
-function getStartStatusScheduler() {
-  const { startScheduler: startStatusScheduler, stopScheduler: stopStatusScheduler } = require('./service/status.service')
-  return { startStatusScheduler, stopStatusScheduler }
+  healthServer.listen(PORT, () => {
+    logInfo('Health server started', { port: PORT })
+  })
 }
 
 async function initializeBot() {
@@ -32,44 +37,38 @@ async function initializeBot() {
     return
   }
 
-  const { stopStatusScheduler } = getStartStatusScheduler()
-  stopStatusScheduler()
-  orderWatcherStarted = false
+  try {
+    await cleanExpired()
+  } catch (error) {
+    logError('Failed to clean expired reseller data', error)
+  }
 
-  const createClient = getCreateClient()
-  botClient = createClient()
+  const client = createClient()
+  botClient = client
 
-  const handleIncomingMessage = getHandleIncomingMessage()
-  botClient.on('message', async msg => {
+  client.on('message', async msg => {
     try {
-      await handleIncomingMessage(botClient, msg)
+      await handleIncomingMessage(client, msg)
     } catch (error) {
       logError('Message handler failed', { error: error.message, from: msg.from })
     }
   })
 
-  botClient.on('ready', () => {
-    logInfo('✅ WhatsApp client ready - initializing services')
+  client.on('ready', () => {
+    logInfo('✅ WhatsApp client ready')
 
     if (!orderWatcherStarted) {
-      logInfo('Starting order watcher')
-      const startOrderWatcher = getStartOrderWatcher()
-      startOrderWatcher(botClient)
       orderWatcherStarted = true
+      startOrderWatcher(client)
     }
-
-    logInfo('Starting status scheduler')
-    const { startStatusScheduler } = getStartStatusScheduler()
-    startStatusScheduler(botClient)
   })
 
-  botClient.initialize()
+  client.initialize()
+  startHealthServer()
 }
 
 function scheduleRestart(delay = 5000) {
   logInfo('Scheduling bot restart', { delay })
-  const { stopStatusScheduler } = getStartStatusScheduler()
-  stopStatusScheduler()
   orderWatcherStarted = false
 
   setTimeout(() => {
@@ -84,12 +83,37 @@ function scheduleRestart(delay = 5000) {
 
 process.on('uncaughtException', error => {
   logError('Uncaught exception', error)
-  scheduleRestart()
+  if (botClient) {
+    botClient.destroy()
+  }
+  process.exit(1)
 })
 
 process.on('unhandledRejection', error => {
   logError('Unhandled rejection', error)
-  scheduleRestart()
+  if (botClient) {
+    botClient.destroy()
+  }
+  process.exit(1)
+})
+
+process.on('SIGTERM', () => {
+  logInfo('SIGTERM received, shutting down')
+  if (botClient) {
+    botClient.destroy()
+  }
+  if (healthServer) healthServer.close()
+  process.exit(0)
+})
+
+process.on('SIGINT', () => {
+  logInfo('SIGINT received, shutting down')
+  if (botClient) {
+    botClient.destroy()
+  }
+  if (healthServer) healthServer.close()
+  process.exit(0)
 })
 
 initializeBot()
+

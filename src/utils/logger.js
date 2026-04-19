@@ -1,39 +1,41 @@
-const { LOG_LEVEL } = require('../config')
+const winston = require('winston')
+const DailyRotateFile = require('winston-daily-rotate-file')
+const path = require('path')
+const { LOG_LEVEL } = require('../config/index')
 
-function formatPrefix(level) {
-  const time = new Date().toISOString()
-  return `[${level}] ${time}`
-}
+const logDir = path.join(process.cwd(), 'logs')
+const logFile = path.join(logDir, 'app-%DATE%.log')
 
-function logInfo(message, meta) {
-  if (LOG_LEVEL === 'error') return
-  if (meta !== undefined) {
-    console.log(`${formatPrefix('INFO')} ${message}`, meta)
-  } else {
-    console.log(`${formatPrefix('INFO')} ${message}`)
-  }
-}
+const logger = winston.createLogger({
+  level: LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'WhatsAppBotPremiuminPlus' },
+  transports: [
+    new DailyRotateFile({
+      dirname: logDir,
+      filename: 'app-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      zippedArchive: true,
+      maxSize: '20m',
+      maxFiles: '30d'
+    }),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  ]
+})
 
-function logWarn(message, meta) {
-  if (LOG_LEVEL === 'error') return
-  if (meta !== undefined) {
-    console.warn(`${formatPrefix('WARN')} ${message}`, meta)
-  } else {
-    console.warn(`${formatPrefix('WARN')} ${message}`)
-  }
-}
-
-function logError(message, meta) {
-  if (meta !== undefined) {
-    console.error(`${formatPrefix('ERROR')} ${message}`, meta)
-  } else {
-    console.error(`${formatPrefix('ERROR')} ${message}`)
-  }
-}
-
-function logRetry(message, meta) {
-  logWarn(message, meta)
-}
+const logInfo = (message, meta = {}) => logger.info(message, meta)
+const logWarn = (message, meta = {}) => logger.warn(message, meta)
+const logError = (message, meta = {}) => logger.error(message, meta)
+const logRetry = (message, meta = {}) => logger.warn(`[RETRY] ${message}`, meta)
 
 module.exports = {
   logInfo,
@@ -41,3 +43,4 @@ module.exports = {
   logError,
   logRetry
 }
+

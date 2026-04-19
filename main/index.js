@@ -7,17 +7,6 @@ const { logInfo, logError } = require('../utils/logger')
 
 let client = null
 let orderInterval = null
-let restartTimeout = null
-
-function setupClientEvents(clientInstance) {
-    clientInstance.on('message', async msg => {
-        await handleMessage(clientInstance, msg)
-    })
-
-    clientInstance.on('ready', () => {
-        logInfo('WhatsApp client ready')
-    })
-}
 
 function startOrderCheck(clientInstance) {
     if (orderInterval) clearInterval(orderInterval)
@@ -27,36 +16,51 @@ function startOrderCheck(clientInstance) {
 }
 
 async function startBot() {
-    try {
-        logInfo('🚀 BOT START')
+    logInfo('🚀 BOT START')
 
-        client = startWhatsApp()
-        setupClientEvents(client)
-        client.initialize()
-        startOrderCheck(client)
-    } catch (error) {
-        logError('Failed to start bot', error)
-        scheduleRestart()
-    }
+    client = startWhatsApp()
+    client.initialize()
+    startOrderCheck(client)
 }
 
-function scheduleRestart() {
-    if (restartTimeout) return
-    restartTimeout = setTimeout(() => {
-        restartTimeout = null
-        logInfo('Restarting bot after failure')
-        startBot()
-    }, 5000)
-}
-
-process.on('uncaughtException', err => {
+process.on('uncaughtException', async (err) => {
     logError('Uncaught exception', err)
-    scheduleRestart()
+    try {
+        await client?.destroy()
+    } catch (destroyErr) {
+        logError('Failed to destroy client', destroyErr)
+    }
+    process.exit(1)
 })
 
-process.on('unhandledRejection', err => {
+process.on('unhandledRejection', async (err) => {
     logError('Unhandled rejection', err)
-    scheduleRestart()
+    try {
+        await client?.destroy()
+    } catch (destroyErr) {
+        logError('Failed to destroy client', destroyErr)
+    }
+    process.exit(1)
+})
+
+process.on('SIGINT', async () => {
+    logInfo('SIGINT received, shutting down gracefully...')
+    try {
+        await client?.destroy()
+    } catch (destroyErr) {
+        logError('Failed to destroy client on SIGINT', destroyErr)
+    }
+    process.exit(0)
+})
+
+process.on('SIGTERM', async () => {
+    logInfo('SIGTERM received, shutting down gracefully...')
+    try {
+        await client?.destroy()
+    } catch (destroyErr) {
+        logError('Failed to destroy client on SIGTERM', destroyErr)
+    }
+    process.exit(0)
 })
 
 startBot()

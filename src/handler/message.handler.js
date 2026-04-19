@@ -1,37 +1,32 @@
 const { enqueue } = require('../utils/queue')
+const { parseCommand } = require('../utils/router')
 const { handleCommand } = require('./command.handler')
 const { logInfo } = require('../utils/logger')
 
-const ALLOWED_COMMANDS = ['menu', 'stok', 'stock', 'buy', 'admin', 'ping', 'p', 'cek', 'cancel', 'reseller', 'website', 'halo', 'test', 'assalamualaikum']
-
-function isValidCommand(text) {
-  const normalized = String(text).toLowerCase().trim()
-  return ALLOWED_COMMANDS.some(cmd => normalized.startsWith(cmd))
-}
-
 async function handleIncomingMessage(client, msg) {
-  if (!msg.body) return
+  const userId = msg.from
+  const body = msg.body ? String(msg.body).trim().toLowerCase() : ''
 
-  const from = msg.from || ''
-  const text = msg.body.toString()
+  logInfo('[COMMAND]', { userId, body: body.substring(0, 50) })
 
-  // Ignore broadcast/status messages
-  if (from === 'status@broadcast' || from.includes('broadcast')) {
-    return
+  if (!body || msg.type !== 'chat') return
+  if (userId.includes('broadcast') || userId.includes('status')) return
+
+  try {
+    const { enqueue } = require('../utils/queue')
+    const { parseCommand } = require('../utils/router')
+    const { handleCommand } = require('./command.handler')
+    const { logError } = require('../utils/logger')
+
+    const commandData = parseCommand(body)
+    if (!commandData) return
+
+    enqueue(client, msg, handleCommand)
+  } catch (error) {
+    const { logError } = require('../utils/logger')
+    logError('Message processing error', { userId, error: error.message })
+    client.sendMessage(userId, '⚠️ Terjadi error, coba lagi').catch(() => {})
   }
-
-  // Optionally ignore group messages (uncomment to enable)
-  // if (from.endsWith('@g.us')) {
-  //   return
-  // }
-
-  // Only process valid commands
-  if (!isValidCommand(text)) {
-    return
-  }
-
-  logInfo('Received command', { from, body: text })
-  enqueue(client, msg, handleCommand)
 }
 
 module.exports = {

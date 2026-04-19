@@ -1,12 +1,18 @@
 const { API_KEY } = require('../config')
 const payment = require('../service/payment.service')
 const premku = require('../service/premku.service')
+const resellerService = require('../service/reseller.service')
 const db = require('../database/db')
 const { logInfo, logError } = require('../utils/logger')
 const { formatCurrency } = require('../utils/format')
 
 let isProcessingOrders = false
 let isExpiringOrders = false
+
+function formatExpiry(timestamp) {
+  if (!timestamp) return 'Tidak ditentukan'
+  return new Date(timestamp).toLocaleString('id-ID')
+}
 
 async function processPendingOrders(client) {
   if (isProcessingOrders) return
@@ -48,6 +54,35 @@ Pembayaran kamu sudah kami terima.
     }
   } finally {
     isProcessingOrders = false
+  }
+}
+
+async function processPendingResellerRequests(client) {
+  try {
+    const requests = await resellerService.getPendingRequests()
+    if (!requests.length) return
+
+    for (const request of requests) {
+      try {
+        const paymentStatus = await payment.checkDeposit(API_KEY, request.invoice_pay)
+        const status = (paymentStatus.data?.status || paymentStatus.status || '').toLowerCase()
+
+        logInfo('Checking reseller payment status', { invoice: request.invoice, status })
+        if (status === 'success') {
+          const record = await resellerService.completePendingRequest(request.invoice_pay)
+          await client.sendMessage(request.id,
+`✅ RESELLER AKTIF\n\nPaket: *${record.type}*\nBerlaku hingga: *${formatExpiry(record.expired_at)}*\n📄 Invoice: *${record.invoice}*\n\nTerima kasih telah bergabung sebagai reseller Premiumin Plus!`
+          )
+        } else if (status === 'expired' || status === 'failed') {
+          await resellerService.failPendingRequest(request.invoice_pay)
+          await client.sendMessage(request.id, `❌ Tagihan reseller ${request.invoice} tidak berhasil. Silakan coba lagi atau hubungi admin.`)
+        }
+      } catch (error) {
+        logError('Reseller payment check failed', { invoice: request.invoice, error: error.message })
+      }
+    }
+  } catch (error) {
+    logError('Reseller request processor failed', error)
   }
 }
 
@@ -275,6 +310,10 @@ async function expireOldOrders(client) {
 function startOrderWatcher(client) {
   setInterval(() => {
     processPendingOrders(client).catch(error => logError('Pending order checker failed', error))
+  }, 10 * 1000)
+
+  setInterval(() => {
+    processPendingResellerRequests(client).catch(error => logError('Reseller request checker failed', error))
   }, 10 * 1000)
 
   setInterval(() => {

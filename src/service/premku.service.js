@@ -1,5 +1,5 @@
 const axios = require('axios')
-const { retry } = require('../utils/retry')
+const { retryAsync } = require('../utils/retry')
 const { logInfo, logError } = require('../utils/logger')
 const { API_KEY, CACHE_REFRESH_INTERVAL } = require('../config')
 
@@ -17,7 +17,7 @@ async function getProducts(apiKey = API_KEY) {
     return productsCache
   }
 
-  const data = await retry(async () => {
+  const data = await retryAsync(async () => {
     const response = await client.post('/products', { api_key: apiKey })
     logInfo('Premku getProducts', { status: response.status })
     return response.data
@@ -28,8 +28,22 @@ async function getProducts(apiKey = API_KEY) {
   return data
 }
 
+async function getStock(apiKey = API_KEY, productId) {
+  return retryAsync(async () => {
+    const response = await client.post('/stock', { api_key: apiKey, product_id: productId })
+    return response.data
+  })
+}
+
+async function getProfile(apiKey = API_KEY) {
+  return retryAsync(async () => {
+    const response = await client.post('/profile', { api_key: apiKey })
+    return response.data
+  })
+}
+
 async function createOrder(apiKey, productId, quantity, refId) {
-  return retry(async () => {
+  return retryAsync(async () => {
     const response = await client.post('/order', {
       api_key: apiKey,
       product_id: productId,
@@ -42,7 +56,7 @@ async function createOrder(apiKey, productId, quantity, refId) {
 }
 
 async function checkOrder(apiKey, invoice) {
-  return retry(async () => {
+  return retryAsync(async () => {
     const response = await client.post('/status', {
       api_key: apiKey,
       invoice
@@ -54,6 +68,8 @@ async function checkOrder(apiKey, invoice) {
 
 module.exports = {
   getProducts,
+  getStock,
+  getProfile,
   createOrder,
   checkOrder
 }

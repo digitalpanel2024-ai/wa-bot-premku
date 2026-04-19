@@ -1,32 +1,26 @@
 const { logRetry } = require('./logger')
-const { RETRY_LIMIT, RETRY_DELAY } = require('../config')
 
-function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+async function retryAsync(fn, options = {}) {
+  const maxRetries = options.retries || 3
+  const minDelay = options.minDelay || 3000
+  const maxDelay = options.maxDelay || 5000
 
-async function retry(fn, maxRetry = RETRY_LIMIT, delay = RETRY_DELAY) {
-  let attempt = 1
-  while (true) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn()
     } catch (error) {
-      if (attempt >= maxRetry) {
+      if (attempt >= maxRetries) {
         throw error
       }
-
-      logRetry('Retry attempt failed', {
+      const waitMs = minDelay + Math.floor(Math.random() * (maxDelay - minDelay + 1))
+      logRetry(`Attempt ${attempt} failed, retrying in ${waitMs}ms`, {
+        error: error.message,
         attempt,
-        maxRetry,
-        error: error.message
+        retriesLeft: maxRetries - attempt
       })
-
-      await wait(delay)
-      attempt += 1
+      await new Promise(resolve => setTimeout(resolve, waitMs))
     }
   }
 }
 
-module.exports = {
-  retry
-}
+module.exports = { retryAsync }

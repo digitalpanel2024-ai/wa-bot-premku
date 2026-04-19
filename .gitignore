@@ -3,6 +3,7 @@ node_modules/
 sessions/
 .wwebjs_cache/
 database/
+!database/reseller.json
 logs/
 src/database/
 .cache
