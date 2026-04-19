@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { logInfo, logError } = require('./logger')
+const { API_KEY, TELEGRAM_TOKEN, PORT } = require('../config')
 const { ensureAssetDirs, cleanDuplicateVideos, invalidateCache } = require('../service/status/status.assets')
 const { ensureHistoryFile } = require('../service/status/status.memory')
 const { ensureLogsDir } = require('../service/status/status.logger')
@@ -34,8 +35,29 @@ function ensureLogFile(filePath) {
   }
 }
 
+function validateEnvironment() {
+  const required = [
+    { key: 'API_KEY', value: API_KEY },
+    { key: 'TELEGRAM_TOKEN', value: TELEGRAM_TOKEN }
+  ]
+
+  const missing = required.filter(item => !item.value)
+
+  if (missing.length > 0) {
+    logError('Missing required environment variables', { missing: missing.map(m => m.key) })
+    return false
+  }
+
+  logInfo('Environment validation passed')
+  return true
+}
+
 function validateSystem() {
   try {
+    if (!validateEnvironment()) {
+      return false
+    }
+
     ensureAssetDirs()
     ensureDirectory(DATABASE_DIR)
     ensureDirectory(LOGS_DIR)

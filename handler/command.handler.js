@@ -25,35 +25,46 @@ function createQrMedia(qrImage) {
 
 function getMarginPercentage(price) {
     if (price <= 4999) return 0.79
-    if (price <= 8999) return 0.59
+    if (price <= 8999) return 0.56
     if (price <= 19999) return 0.19
-    if (price <= 100000) return 0.10
-    return 0.10
+    if (price <= 100000) return 0.11
+    return 0.11
 }
 
-function calculateSaleBase(price) {
+function calculateSalePrice(price) {
     const marginPct = getMarginPercentage(price)
-    return Math.ceil(price + price * marginPct)
+    const marginAmount = price * marginPct
+    const kodeUnik = Math.floor(Math.random() * (399 - 100 + 1)) + 100
+    return Math.ceil(price + marginAmount) + kodeUnik
 }
 
-function randomCode() {
-    return Math.floor(Math.random() * (349 - 119 + 1)) + 119
-}
+function generateUniquePrice(price, db) {
+    let final = calculateSalePrice(price)
+    let attempts = 0
 
-function generateUnique(base, db) {
-    let final = base
-    let code
+    while (Object.values(db).some(x => x.total === final && x.status === 'WAITING') && attempts < 10) {
+        final = calculateSalePrice(price)
+        attempts++
+    }
 
-    do {
-        code = randomCode()
-        final = base + code
-    } while (Object.values(db).some(x => x.total === final && x.status === 'WAITING'))
-
-    return { total: final, code }
+    return final
 }
 
 async function handleCommand(client, msg) {
     const text = msg.body.toLowerCase().trim()
+
+    // ================= IGNORE NON-COMMAND CHATS =================
+    const validCommands = [
+        'p', 'ping', 'halo', 'test', 'assalamualaikum',
+        'menu', 'stok', 'admin', 'website', 'reseller'
+    ]
+
+    const isBuyCommand = text.startsWith('buy')
+    const isCancelCommand = text.startsWith('cancel')
+
+    if (!validCommands.includes(text) && !isBuyCommand && !isCancelCommand) {
+        return // Ignore non-command messages
+    }
 
     // ================= GREETING =================
     if (['p','ping','halo','test','assalamualaikum'].includes(text)) {
@@ -67,7 +78,7 @@ async function handleCommand(client, msg) {
         return client.sendMessage(msg.from,
 `${greet}!
 
-Selamat datang di *Premiumin Plus* 🚀  
+Selamat datang di *Premiumin Plus* 🚀
 Pusat akun premium legal, murah, dan full otomatis ⚡
 
 Mau cari akun apa hari ini?
@@ -78,7 +89,7 @@ Mau cari akun apa hari ini?
 • Ketik *ADMIN* → bantuan langsung
 
 💸 *Mau untung lebih?*
-Gabung jadi *RESELLER* dan dapat harga lebih murah!  
+Gabung jadi *RESELLER* dan dapat harga lebih murah!
 Bisa jual ulang dengan profit bebas 🔥
 
 Ketik *RESELLER* untuk info lengkap.`
@@ -88,13 +99,34 @@ Ketik *RESELLER* untuk info lengkap.`
     // ================= MENU =================
     if (text === 'menu') {
         return client.sendMessage(msg.from,
-`😎 *MENU PREMIUMIN PLUS*
+`🧠 *MENU PREMIUMIN PLUS* 😎
 
-📌 *Menu Utama:*
-• ketik *stok* → cek produk tersedia
-• ketik *buy* → info pembelian produk
-• ketik *admin* → hubungi admin (no toxic / no rasis)
-• website → SSM Panel (Beta)`
+━━━━━━━━━━━━━━
+
+📦 *STOK*
+Cek semua produk tersedia
+
+🛒 *BUY*
+Untuk membeli produk
+Gunakan format: buy <kode>
+
+👨‍💻 *ADMIN*
+Chat admin langsung
+
+🌐 *WEBSITE*
+https://digitalpanelsmm.com
+
+💸 *RESELLER*
+Gabung & jual ulang produk kami
+
+━━━━━━━━━━━━━━
+
+⚡ Bot Otomatis 24 Jam
+⚡ Fast Response
+⚡ Auto Proses
+
+🔥 Mau cuan? Join reseller sekarang!
+Ketik *ADMIN* 😈`
         )
     }
 
@@ -132,25 +164,57 @@ Keuntungan jadi Reseller:
 
     // ================= STOK =================
     if (text === 'stok') {
-        const res = await premku.getProducts(process.env.API_KEY)
+        try {
+            const res = await premku.getProducts(process.env.API_KEY)
 
-        let msgText = '🛒 *KATALOG PREMIUMIN PLUS*\n\n'
+            if (!res || !res.products || !Array.isArray(res.products)) {
+                return client.sendMessage(msg.from,
+`⚠️ Gagal mengambil data stok
+Silakan coba lagi nanti 🙏`
+                )
+            }
 
-        res.products.forEach(p => {
-            if (p.stock <= 0) return
+            // Filter available products with stock > 0
+            const availableProducts = res.products
+                .filter(p => p.status === 'available' && p.stock > 0)
+                .sort((a, b) => a.name.localeCompare(b.name))
 
-            const basePrice = calculateSaleBase(p.price)
-            const code = p.id
+            if (availableProducts.length === 0) {
+                return client.sendMessage(msg.from,
+`📭 *STOK KOSONG*
 
-            msgText += `📦 *${p.name}*\n`
-            msgText += `📊 Stok: ${p.stock}\n`
-            msgText += `💰 Rp *${basePrice.toLocaleString('id-ID')}*\n`
-            msgText += `🔑 buy ${code}\n\n`
-        })
+Mohon maaf, semua produk sedang habis.
+Silakan cek lagi nanti 🙏`
+                )
+            }
 
-        msgText += 'Ketik: buy id atau buyid\nContoh: buy 1'
+            let msgText = `🛒 *KATALOG PREMIUMIN PLUS*\n\n`
 
-        return client.sendMessage(msg.from, msgText)
+            availableProducts.forEach((p, index) => {
+                const salePrice = calculateSalePrice(p.price)
+                const kode = p.id
+
+                msgText += `📦 ${p.name}\n`
+                msgText += `📊 Stok: ${p.stock} akun\n`
+                msgText += `💰 Harga: Rp ${salePrice.toLocaleString('id-ID')}\n`
+                msgText += `🔑 Kode: buy ${kode}\n`
+
+                if (index < availableProducts.length - 1) {
+                    msgText += `━━━━━━━━━━━━━━\n\n`
+                }
+            })
+
+            msgText += `\n📌 *Cara beli:*\nKetik *buy <kode>*\nContoh: buy ${availableProducts[0].id}`
+
+            return client.sendMessage(msg.from, msgText)
+
+        } catch (error) {
+            logError('Stok command error', { error: error.message })
+            return client.sendMessage(msg.from,
+`⚠️ Gagal mengambil data stok
+Silakan coba lagi nanti 🙏`
+            )
+        }
     }
 
     // ================= BUY =================
@@ -173,8 +237,7 @@ Keuntungan jadi Reseller:
             }
 
             let db = readDB()
-            const base = calculateSaleBase(product.price)
-            const { total, code } = generateUnique(base, db)
+            const total = generateUniquePrice(product.price, db)
 
             const invoice = 'INV-' + Date.now()
 
@@ -191,7 +254,6 @@ Keuntungan jadi Reseller:
                 user: msg.from,
                 product_id: id,
                 total,
-                code,
                 invoice_pay: pay.data.invoice,
                 status: 'WAITING'
             }

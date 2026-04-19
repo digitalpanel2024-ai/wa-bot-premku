@@ -1,10 +1,11 @@
 const { logRetry } = require('./logger')
+const { RETRY_LIMIT, RETRY_DELAY } = require('../config')
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function retry(fn, maxRetry = 3, delay = 2000) {
+async function retry(fn, maxRetry = RETRY_LIMIT, delay = RETRY_DELAY) {
   let attempt = 1
   while (true) {
     try {

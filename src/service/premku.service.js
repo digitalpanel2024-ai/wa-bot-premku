@@ -1,18 +1,31 @@
 const axios = require('axios')
 const { retry } = require('../utils/retry')
 const { logInfo, logError } = require('../utils/logger')
+const { API_KEY, CACHE_REFRESH_INTERVAL } = require('../config')
 
 const client = axios.create({
   baseURL: 'https://premku.com/api',
   timeout: 10000
 })
 
-async function getProducts(apiKey) {
-  return retry(async () => {
+let productsCache = null
+let cacheTimestamp = 0
+
+async function getProducts(apiKey = API_KEY) {
+  const now = Date.now()
+  if (productsCache && (now - cacheTimestamp) < CACHE_REFRESH_INTERVAL) {
+    return productsCache
+  }
+
+  const data = await retry(async () => {
     const response = await client.post('/products', { api_key: apiKey })
     logInfo('Premku getProducts', { status: response.status })
     return response.data
   })
+
+  productsCache = data
+  cacheTimestamp = now
+  return data
 }
 
 async function createOrder(apiKey, productId, quantity, refId) {

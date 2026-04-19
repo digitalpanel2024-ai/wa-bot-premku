@@ -1,23 +1,31 @@
 const { logInfo, logError } = require('./logger')
+const { QUEUE_CONCURRENCY } = require('../config')
 
 const queue = []
-let isProcessing = false
+let processingCount = 0
 
 async function processQueue() {
-  if (isProcessing) return
-  isProcessing = true
+  if (processingCount >= QUEUE_CONCURRENCY) return
 
-  while (queue.length > 0) {
+  while (queue.length > 0 && processingCount < QUEUE_CONCURRENCY) {
     const job = queue.shift()
+    processingCount++
     try {
       logInfo('Processing queued message', { from: job.msg.from, body: job.msg.body })
       await job.handler(job.client, job.msg)
     } catch (error) {
       logError('Queue job failed', { error: error.message, from: job.msg.from })
+    } finally {
+      processingCount--
     }
   }
 
-  isProcessing = false
+  // Continue processing if more jobs arrived
+  if (queue.length > 0) {
+    processQueue().catch(error => {
+      logError('Queue processing failed', error)
+    })
+  }
 }
 
 function enqueue(client, msg, handler) {

@@ -22,11 +22,12 @@ function createClient() {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
+        '--disable-gpu',
         '--single-process',
-        '--disable-gpu'
+        '--no-zygote',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ]
     }
   })
@@ -42,6 +43,7 @@ function createClient() {
 
   client.on('auth_failure', failure => {
     logError('WhatsApp authentication failure', failure)
+    client.removeAllListeners()
     setTimeout(() => {
       logInfo('Attempting WhatsApp reinitialization after auth failure')
       client.initialize().catch(err => logError('WhatsApp reinitialize error', err))
@@ -50,6 +52,7 @@ function createClient() {
 
   client.on('disconnected', reason => {
     logError('WhatsApp disconnected', reason)
+    client.removeAllListeners()
     setTimeout(() => {
       logInfo('Attempting WhatsApp reconnect after disconnect')
       client.initialize().catch(err => logError('WhatsApp reconnect error', err))

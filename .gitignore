@@ -5,3 +5,5 @@ sessions/
 database/
 logs/
 src/database/
+.cache
+*.log
